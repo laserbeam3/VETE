@@ -10,7 +10,7 @@ text_data_path = 'text_data.json'
 
 # Config
 # TODO(laser): Temporary small values here.
-batch_size = 2048
+batch_size = 1024
 max_images_to_process = 16384
 num_epochs = 100
 img_feature_count = 2048
@@ -104,10 +104,11 @@ img_embedding = tf.matmul(img_merged, W_img)
 E_bow_gather = tf.gather(word_embeddings, sentence_words)
 E_bow_sum = tf.reduce_mean(E_bow_gather, 1)
 
-def cosine_similarity(a, b):
-    norm_a = tf.nn.l2_normalize(a, 0)
-    norm_b = tf.nn.l2_normalize(b, 0)
-    return tf.reduce_sum(tf.multiply(norm_a, norm_b), 1)
+def cosine_similarity(a, b, axis=1):
+    dot = tf.reduce_sum(tf.multiply(a, b), axis)
+    norm_a = tf.norm(a, axis=axis)
+    norm_b = tf.norm(b, axis=axis)
+    return dot / (norm_a * norm_b)
 
 # INVESTIGATE(laser): Why does tf.contrib.metrics.streaming_pearson_correlation
 # break model gradients?
