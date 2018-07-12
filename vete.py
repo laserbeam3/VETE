@@ -1,7 +1,7 @@
 import json
 import tensorflow as tf
 import numpy as np
-from prepare_image_data import prepare_image_data
+from prepare_data import prepare_image_data
 from prepare_text_data import prepare_text_data
 
 # Common paths.
