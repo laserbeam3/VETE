@@ -1,6 +1,9 @@
 # Do one time data preparation steps:
 # - Resize images to 300x300.
 # - Run through Inceptionv3 > 2048 N feature vector.
+#
+# CLEANUP(laser): Have this as a callable maybe_prepare_image_data(path) method
+# that only processes the data if the file doesn't already exist
 
 import os
 import json
