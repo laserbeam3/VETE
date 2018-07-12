@@ -1,3 +1,5 @@
 *.npy
 *.pyc
 text_data.json
+*.png
+validation_data.json

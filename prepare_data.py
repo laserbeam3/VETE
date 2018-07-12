@@ -11,10 +11,12 @@ from tensorflow.python.keras import Model
 from tensorflow.python.keras.preprocessing import image
 from tensorflow.python.keras.applications import inception_v3
 
+
 def concat_np_list(list_of_np_arrays):
     shape = list(list_of_np_arrays[0].shape)
     shape[:0] = [len(list_of_np_arrays)]
     return np.concatenate(list_of_np_arrays).reshape(shape)
+
 
 def prepare_image_data(images_root='D:\\Datasets\\train2014',
                        captions_path='D:\\Datasets\\annotations\\captions_train2014.json',
@@ -74,6 +76,7 @@ def prepare_image_data(images_root='D:\\Datasets\\train2014',
     final_result = np.sort(final_result, axis=0)
     np.save(output_path, final_result)
 
+
 def prepare_text_data(captions_path='D:\\Datasets\\annotations\\captions_train2014.json',
                       image_features_path='image_features.npy',
                       output_path='text_data.json'):
@@ -129,6 +132,72 @@ def prepare_text_data(captions_path='D:\\Datasets\\annotations\\captions_train20
 
     with open(output_path, 'w') as outfile:
         json.dump({'vocabulary': vocabulary, 'ids':ids, 'sentences':sentences}, outfile)
+
+
+def encode_sentence(vocabulary, sentence):
+    encoding = []
+    for word in sentence.split(' '):
+        try:
+            encoding.append(vocabulary[word])
+        except KeyError:
+            pass  # ignore words outside of the dictionary
+    return encoding
+
+
+def prepare_validation_data(vocabulary,
+                            captions_path='D:\\Datasets\\annotations\\captions_val2014.json',
+                            output_path='validation_data.json',
+                            caption_bucket_size=1000):
+
+    if os.path.isfile(output_path):
+        print('Validation prep: Output file already exists, doing nothing.')
+        return
+
+    double_count = 0
+    single_count = 0
+    captions = {}
+    pairs = []
+
+    with open(captions_path) as f:
+        image_metadata = json.load(f)
+
+        for caption_entry in image_metadata['annotations']:
+            image_id = caption_entry['image_id']
+
+            if not image_id in captions:
+                encoding = encode_sentence(vocabulary, caption_entry['caption'])
+                if len(encoding) == 0:
+                    continue
+                captions[image_id] = [encoding]
+                single_count += 1
+            elif double_count < caption_bucket_size and \
+                 len(captions[image_id]) == 1:
+                encoding = encode_sentence(vocabulary, caption_entry['caption'])
+                if len(encoding) == 0:
+                    continue
+                captions[image_id].append(encoding)
+                double_count += 1
+                pairs.append({'captions': captions[image_id],
+                              'similarity': 1.0})
+
+            if double_count >= caption_bucket_size and \
+               single_count >= 3 * caption_bucket_size:
+                break;
+
+    aux = None
+    for image_id in captions:
+        cap = captions[image_id]
+        if len(cap) == 1:
+            if aux is None:
+                aux = cap[0]
+            else:
+                pairs.append({'captions': [aux, cap[0]], 'similarity': 0.0})
+                aux = None
+        if len(pairs) >= 2 * caption_bucket_size:
+            break
+
+    with open(output_path, 'w') as outfile:
+        json.dump(pairs, outfile)
 
 
 if __name__ == '__main__':
