@@ -10,8 +10,12 @@ image_features_path = 'image_features.npy'
 
 # Config
 # TODO(laser): Temporary small values here.
-batch_size = 16
-max_images_to_process = 256
+batch_size = 1024
+max_images_to_process = 65536
+# max_images_to_process = 16384
+num_epochs = 100
+img_feature_count = 2048
+word_feature_count = 128
 
 # OPTIMIZE(laser): Data prep step should have everything written to disk in a
 # format that tf.data.Dataset can stream. Investigate how Tensorflow does that
@@ -78,6 +82,8 @@ def load_data(captions_path, image_features_path):
 
     sentences = [sentences_dict[v] for v in sorted(sentences_dict.keys())]
     pad = len(max(sentences, key=len))
+    # TODO(laser): -1 values should be ignored later, and a SparseTensor should
+    # be built here insttead.
     sentence_array = np.array([i + [-1]*(pad-len(i)) for i in sentences])
     dataset = tf.data.Dataset.from_tensor_slices(
         {'image_id': ids,
@@ -88,7 +94,7 @@ def load_data(captions_path, image_features_path):
 
 # Build Model
 dataset, vocabulary = load_data(captions_path, image_features_path)
-dataset = dataset.shuffle(100000).batch(batch_size)
+dataset = dataset.shuffle(100000).batch(batch_size).repeat(num_epochs)
 iter = dataset.make_one_shot_iterator()
 item = iter.get_next()
 
@@ -99,49 +105,53 @@ ids, img_features, sentence_words = item['image_id'], item['img_features'], \
                                     item['sentences']
 
 half_batch = int(batch_size/2)
-num_epochs = 10
-img_feature_count = 2048
-word_feature_count = 8
 word_count = len(vocabulary)
 
 # TODO(laser): Make the variables trainable (needed backward propagation? other
 # mechanism)
-image_conversion_layer = tf.Variable(tf.random_uniform([img_feature_count,
-                                                        word_feature_count]))
+W_img = tf.Variable(tf.random_uniform([img_feature_count, word_feature_count]))
 word_embeddings = tf.Variable(tf.random_uniform([word_count,
                                                  word_feature_count]))
 
+# The paper shuffles the image-text pairs half way through the model. There's
+# really no need to do that so late, and we can keep all the computation linear
+# if we shuffle at the start.
 labels = tf.constant([1.0] * half_batch + [-1.0] * half_batch)
+img_a, img_b = tf.split(img_features, num_or_size_splits=2, axis=0)
+img_shuffled = tf.random_shuffle(img_b)
+img_merged   = tf.concat([img_a, img_b], 0)
 
-W_img = tf.matmul(img_features, image_conversion_layer)
-W_img = tf.nn.relu(W_img)
+img_embedding = tf.matmul(img_merged, W_img)
 E_bow_gather = tf.gather(word_embeddings, sentence_words)
 E_bow_sum = tf.reduce_mean(E_bow_gather, 1)
 
-txt_split_match, txt_split_disjoint = tf.split(E_bow_sum, num_or_size_splits=2,
-                                               axis=0)
-txt_split_shuffled = tf.random_shuffle(txt_split_disjoint)
-txt_merged = tf.concat([txt_split_match, txt_split_disjoint], 0)
-
 def cosine_similarity(a, b):
-    norm_a = tf.nn.l2_normalize(a,0)
-    norm_b = tf.nn.l2_normalize(b,0)
+    norm_a = tf.nn.l2_normalize(a, 0)
+    norm_b = tf.nn.l2_normalize(b, 0)
     return tf.reduce_sum(tf.multiply(norm_a, norm_b), 1)
 
-similarity = cosine_similarity(W_img, txt_merged)
-pearson = tf.contrib.metrics.streaming_pearson_correlation(similarity, labels)
-optimizer = tf.train.AdamOptimizer().minimize(-pearson[0])
+def pearson(a, b):
+    mean_a, var_a = tf.nn.moments(a, 0)
+    mean_b, var_b = tf.nn.moments(b, 0)
+    cov = 1.0 / (batch_size-1) * tf.reduce_sum((a - mean_a) * (b - mean_b))
+    return cov / (var_a * var_b)
+
+
+similarity = cosine_similarity(img_embedding, E_bow_sum)
+p = pearson(similarity, labels)
+optimizer = tf.train.AdamOptimizer().minimize(-p)
 
 # Run session
-with tf.Session() as session:
-    session.run(tf.global_variables_initializer())
-    session.run(tf.local_variables_initializer())
+with tf.Session() as s:
+    s.run(tf.global_variables_initializer())
+    s.run(tf.local_variables_initializer())
 
     # for epoch in range(num_epochs):
     while True:
         try:
-            result = session.run(optimizer);
-            print(result)
+            _, loss = s.run([optimizer, p]);
+            print(loss)
+
         except tf.errors.OutOfRangeError:
             break
 
