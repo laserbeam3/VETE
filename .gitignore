@@ -1,1 +1,3 @@
 *.npy
+*.pyc
+text_data.json
