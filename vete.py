@@ -1,8 +1,7 @@
 import json
 import tensorflow as tf
 import numpy as np
-from prepare_data import prepare_image_data
-from prepare_text_data import prepare_text_data
+from prepare_data import prepare_image_data, prepare_text_data
 
 # Common paths.
 # TODO(laser): Convert these to arguments for the script.
@@ -67,7 +66,7 @@ def load_data(image_features_path, text_data_path):
          'img_features': image_features,
          'sentences': sentence_array})
 
-    print("Data lodade and filtered")
+    print("Data loaded and filtered.")
 
     return dataset, vocabulary
 
