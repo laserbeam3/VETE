@@ -120,7 +120,7 @@ def prepare_text_data(captions_path='D:\\Datasets\\annotations\\captions_train20
                 vocabulary[word] = word_count
                 word_count = word_count + 1
             sentence.append(vocabulary[word])
-        sentences_dict[image_id] = sentence
+        sentences_dict[image_id] = sorted(sentence)
 
     print('Vocabulary and sentence dict ready.')
 

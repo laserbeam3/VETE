@@ -10,8 +10,7 @@ text_data_path = 'text_data.json'
 
 # Config
 # TODO(laser): Temporary small values here.
-batch_size = 1024
-# max_images_to_process = 65536
+batch_size = 2048
 max_images_to_process = 16384
 num_epochs = 100
 img_feature_count = 2048
@@ -58,7 +57,7 @@ def load_data(image_features_path, text_data_path):
         image_features = np.delete(image_features, idx_to_remove, axis=0)
 
     # TODO(laser): -1 values should be ignored later, and a SparseTensor should
-    # be built here insttead.
+    # be built here instead.
     pad = len(max(sentences, key=len))
     sentence_array = np.array([i + [-1]*(pad-len(i)) for i in sentences])
     dataset = tf.data.Dataset.from_tensor_slices(
@@ -70,7 +69,10 @@ def load_data(image_features_path, text_data_path):
 
     return dataset, vocabulary
 
+
 # Build Model
+# CLEANUP(laser): This should probably go into a function, but for now I want
+# easy access to the individual layers for printing.
 dataset, vocabulary = load_data(image_features_path, text_data_path)
 dataset = dataset.shuffle(100000).batch(batch_size).repeat(num_epochs)
 iter = dataset.make_one_shot_iterator()
@@ -79,25 +81,24 @@ item = iter.get_next()
 # TODO(laser): sentences should be a SparseTensor, figure out what the syntax
 # there is and how to get it working with Datasets, which allegedly don't handle
 # SparseTensors...
-ids, img_features, sentence_words = item['image_id'], item['img_features'], \
-                                    item['sentences']
+ids            = item['image_id']
+img_features   = item['img_features']
+sentence_words = item['sentences']
 
 half_batch = int(batch_size/2)
 word_count = len(vocabulary)
 
-# TODO(laser): Make the variables trainable (needed backward propagation? other
-# mechanism)
 W_img = tf.Variable(tf.random_uniform([img_feature_count, word_feature_count]))
 word_embeddings = tf.Variable(tf.random_uniform([word_count,
                                                  word_feature_count]))
 
 # The paper shuffles the image-text pairs half way through the model. There's
 # really no need to do that so late, and we can keep all the computation linear
-# if we shuffle at the start.
+# if we shuffle before we touch any of our training variables..
 labels = tf.constant([1.0] * half_batch + [-1.0] * half_batch)
 img_a, img_b = tf.split(img_features, num_or_size_splits=2, axis=0)
 img_shuffled = tf.random_shuffle(img_b)
-img_merged   = tf.concat([img_a, img_b], 0)
+img_merged   = tf.concat([img_a, img_shuffled], 0)
 
 img_embedding = tf.matmul(img_merged, W_img)
 E_bow_gather = tf.gather(word_embeddings, sentence_words)
@@ -108,12 +109,13 @@ def cosine_similarity(a, b):
     norm_b = tf.nn.l2_normalize(b, 0)
     return tf.reduce_sum(tf.multiply(norm_a, norm_b), 1)
 
-def pearson(a, b):
-    mean_a, var_a = tf.nn.moments(a, 0)
-    mean_b, var_b = tf.nn.moments(b, 0)
+# INVESTIGATE(laser): Why does tf.contrib.metrics.streaming_pearson_correlation
+# break model gradients?
+def pearson(a, b, axis=0):
+    mean_a, var_a = tf.nn.moments(a, axis)
+    mean_b, var_b = tf.nn.moments(b, axis)
     cov = 1.0 / (batch_size-1) * tf.reduce_sum((a - mean_a) * (b - mean_b))
-    return cov / (var_a * var_b)
-
+    return cov / tf.sqrt(var_a * var_b)
 
 similarity = cosine_similarity(img_embedding, E_bow_sum)
 p = pearson(similarity, labels)
