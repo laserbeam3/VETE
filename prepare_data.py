@@ -18,9 +18,10 @@ def concat_np_list(list_of_np_arrays):
     return np.concatenate(list_of_np_arrays).reshape(shape)
 
 
-def prepare_image_data(images_root='D:\\Datasets\\train2014',
-                       captions_path='D:\\Datasets\\annotations\\captions_train2014.json',
-                       output_path='image_features.npy'):
+def prepare_image_data(paths):
+    images_root = paths['images_root']
+    captions_path = paths['train_captions_path']
+    output_path = paths['image_features_path']
 
     if os.path.isfile(output_path):
         print('Image prep: Output file already exists, doing nothing.')
@@ -77,9 +78,10 @@ def prepare_image_data(images_root='D:\\Datasets\\train2014',
     np.save(output_path, final_result)
 
 
-def prepare_text_data(captions_path='D:\\Datasets\\annotations\\captions_train2014.json',
-                      image_features_path='image_features.npy',
-                      output_path='text_data.json'):
+def prepare_text_data(paths):
+    captions_path = paths['train_captions_path']
+    image_features_path = paths['image_features_path']
+    output_path = paths['text_data_path']
 
     if os.path.isfile(output_path):
         print('Text prep: Output file already exists, doing nothing.')
@@ -144,10 +146,9 @@ def encode_sentence(vocabulary, sentence):
     return encoding
 
 
-def prepare_validation_data(vocabulary,
-                            captions_path='D:\\Datasets\\annotations\\captions_val2014.json',
-                            output_path='validation_data.json',
-                            caption_bucket_size=1000):
+def prepare_validation_data(vocabulary, paths, caption_bucket_size=1000):
+    captions_path = paths['val_captions_path']
+    output_path = paths['validation_data_path']
 
     if os.path.isfile(output_path):
         print('Validation prep: Output file already exists, doing nothing.')
@@ -161,7 +162,10 @@ def prepare_validation_data(vocabulary,
     with open(captions_path) as f:
         image_metadata = json.load(f)
 
-        for caption_entry in image_metadata['annotations']:
+        p = np.random.permutation(len(image_metadata['annotations']))
+
+        for idx in p:
+            caption_entry = image_metadata['annotations'][idx]
             image_id = caption_entry['image_id']
 
             if not image_id in captions:
@@ -201,5 +205,17 @@ def prepare_validation_data(vocabulary,
 
 
 if __name__ == '__main__':
-    prepare_image_data()
-    prepare_text_data()
+    paths = {
+        # Input paths
+        'images_root': 'D:\\Datasets\\train2014',
+        'train_captions_path': 'D:\\Datasets\\annotations\\captions_train2014.json',
+        'val_captions_path': 'D:\\Datasets\\annotations\\captions_val2014.json',
+
+        # Files containing output for partial processing steps.
+        'image_features_path': 'image_features.npy',
+        'text_data_path': 'text_data.json',
+        'validation_data_path': 'validation_data.json'
+    }
+
+    prepare_image_data(paths)
+    prepare_text_data(paths)
